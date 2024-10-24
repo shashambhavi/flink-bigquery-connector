@@ -32,14 +32,21 @@ import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.connector.base.DeliveryGuarantee;
+import org.apache.flink.connector.file.src.FileSource;
+import org.apache.flink.connector.file.src.reader.TextLineInputFormat;
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.formats.avro.typeutils.GenericRecordAvroTypeInfo;
 import org.apache.flink.metrics.Counter;
+import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.datastream.DataStreamSink;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.table.annotation.DataTypeHint;
 import org.apache.flink.table.annotation.FunctionHint;
+import org.apache.flink.table.api.DataTypes;
+import org.apache.flink.table.api.Schema;
 import org.apache.flink.table.api.Table;
+import org.apache.flink.table.api.TableDescriptor;
 import org.apache.flink.table.api.TablePipeline;
 import org.apache.flink.table.api.TableResult;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
@@ -59,11 +66,14 @@ import com.google.cloud.flink.bigquery.source.config.BigQueryReadOptions;
 import com.google.cloud.flink.bigquery.table.config.BigQueryReadTableConfig;
 import com.google.cloud.flink.bigquery.table.config.BigQuerySinkTableConfig;
 import com.google.cloud.flink.bigquery.table.config.BigQueryTableConfig;
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -201,8 +211,8 @@ public class BigQueryIntegrationTest {
             runQueryFlinkJob(sourceGcpProjectName, query);
             return;
         }
-        String sourceDatasetName = parameterTool.getRequired("bq-source-dataset");
-        String sourceTableName = parameterTool.getRequired("bq-source-table");
+        String sourceDatasetName = parameterTool.get("bq-source-dataset", "");
+        String sourceTableName = parameterTool.get("bq-source-table", "");
 
         // Add Sink Parameters as well. (Optional)
         String destGcpProjectName = parameterTool.get("gcp-dest-project");
@@ -216,11 +226,11 @@ public class BigQueryIntegrationTest {
         String mode = parameterTool.get("mode", "bounded");
         Long expectedNumberOfRecords = parameterTool.getLong("expected-records", 210000L);
         Integer timeoutTimePeriod = parameterTool.getInt("timeout", 18);
-        Integer partitionDiscoveryInterval =
-                parameterTool.getInt("partition-discovery-interval", 10);
+        Integer fileDiscoveryInterval = parameterTool.getInt("file-discovery-interval", 10);
 
         String recordPropertyToAggregate;
         String recordPropertyForTimestamps;
+        String sourceGCSBucketURI;
         boolean sinkToBigQuery =
                 (destGcpProjectName != null && !destGcpProjectName.isEmpty())
                         && (destDatasetName != null && !destDatasetName.isEmpty())
@@ -241,17 +251,14 @@ public class BigQueryIntegrationTest {
                                 sinkParallelism);
                         break;
                     case "unbounded":
-                        recordPropertyForTimestamps = parameterTool.getRequired("ts-prop");
+                        sourceGCSBucketURI = parameterTool.getRequired("gcs-source-bucket-uri");
                         runStreamingSQLFlinkJob(
-                                sourceGcpProjectName,
-                                sourceDatasetName,
-                                sourceTableName,
+                                sourceGCSBucketURI,
                                 destGcpProjectName,
                                 destDatasetName,
                                 destTableName,
                                 isExactlyOnceEnabled,
-                                recordPropertyForTimestamps,
-                                partitionDiscoveryInterval,
+                                fileDiscoveryInterval,
                                 timeoutTimePeriod,
                                 sinkParallelism);
                         break;
@@ -280,18 +287,15 @@ public class BigQueryIntegrationTest {
                                 sinkParallelism);
                         break;
                     case "unbounded":
-                        recordPropertyForTimestamps = parameterTool.getRequired("ts-prop");
+                        sourceGCSBucketURI = parameterTool.getRequired("gcs-source-bucket-uri");
                         runStreamingFlinkJobWithSink(
-                                sourceGcpProjectName,
-                                sourceDatasetName,
-                                sourceTableName,
+                                sourceGCSBucketURI,
                                 destGcpProjectName,
                                 destDatasetName,
                                 destTableName,
                                 isExactlyOnceEnabled,
                                 sinkParallelism,
-                                recordPropertyForTimestamps,
-                                partitionDiscoveryInterval,
+                                fileDiscoveryInterval,
                                 timeoutTimePeriod);
                         break;
                     default:
@@ -316,7 +320,7 @@ public class BigQueryIntegrationTest {
                                 sourceDatasetName,
                                 sourceTableName,
                                 recordPropertyForTimestamps,
-                                partitionDiscoveryInterval,
+                                fileDiscoveryInterval,
                                 expectedNumberOfRecords,
                                 timeoutTimePeriod);
                         break;
@@ -420,32 +424,15 @@ public class BigQueryIntegrationTest {
     }
 
     private static void runStreamingFlinkJobWithSink(
-            String sourceProjectName,
-            String sourceDatasetName,
-            String sourceTableName,
+            String sourceGCSBucketURI,
             String destProjectName,
             String destDatasetName,
             String destTableName,
             boolean exactlyOnce,
             Integer sinkParallelism,
-            String recordPropertyForTimestamps,
-            Integer partitionDiscoveryInterval,
+            Integer fileDiscoveryInterval,
             Integer timeoutTimePeriod)
             throws Exception {
-
-        BigQuerySource<GenericRecord> source =
-                BigQuerySource.streamAvros(
-                        BigQueryReadOptions.builder()
-                                .setBigQueryConnectOptions(
-                                        BigQueryConnectOptions.builder()
-                                                .setProjectId(sourceProjectName)
-                                                .setDataset(sourceDatasetName)
-                                                .setTable(sourceTableName)
-                                                .build())
-                                .setPartitionDiscoveryRefreshIntervalInMinutes(
-                                        partitionDiscoveryInterval)
-                                .build());
-
         BigQueryConnectOptions sinkConnectOptions =
                 BigQueryConnectOptions.builder()
                         .setProjectId(destProjectName)
@@ -468,20 +455,18 @@ public class BigQueryIntegrationTest {
             throw new IllegalArgumentException("EXACTLY ONCE is not supported yet ");
         }
 
-        runJobWithSink(
-                source,
-                sinkConfig,
-                source.getProducedType(),
-                recordPropertyForTimestamps,
-                timeoutTimePeriod,
-                sinkParallelism);
+        FileSource<String> source =
+                FileSource.forRecordStreamFormat(
+                                new TextLineInputFormat(), new Path(sourceGCSBucketURI))
+                        .monitorContinuously(Duration.ofMinutes(fileDiscoveryInterval))
+                        .build();
+
+        runJobWithSink(source, sinkConfig, timeoutTimePeriod, sinkParallelism);
     }
 
     private static void runJobWithSink(
-            Source<GenericRecord, ?, ?> source,
+            FileSource<String> source,
             BigQuerySinkConfig sinkConfig,
-            TypeInformation<GenericRecord> typeInfo,
-            String recordPropertyForTimestamps,
             Integer timeoutTimePeriod,
             Integer sinkParallelism)
             throws Exception {
@@ -489,19 +474,53 @@ public class BigQueryIntegrationTest {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.enableCheckpointing(CHECKPOINT_INTERVAL);
 
+        DataStream<String> stringStream =
+                env.fromSource(source, WatermarkStrategy.noWatermarks(), "BigQueryStreamingSource");
+
+        // Convert DataStreamSource<String> to DataStream<GenericRecord> and create a sink
         DataStreamSink unboundedStreamSink =
-                env.fromSource(
-                                source,
-                                WatermarkStrategy.<GenericRecord>forBoundedOutOfOrderness(
-                                                Duration.ofMinutes(MAX_OUT_OF_ORDER))
-                                        .withTimestampAssigner(
-                                                (event, timestamp) ->
-                                                        (Long)
-                                                                event.get(
-                                                                        recordPropertyForTimestamps))
-                                        .withIdleness(Duration.ofMinutes(MAX_IDLENESS)),
-                                "BigQueryStreamingSource",
-                                typeInfo)
+                stringStream
+                        .map(
+                                new RichMapFunction<String, GenericRecord>() {
+                                    private transient org.apache.avro.Schema schema;
+
+                                    @Override
+                                    public void open(Configuration parameters) throws Exception {
+                                        super.open(parameters);
+                                        this.schema =
+                                                new org.apache.avro.Schema.Parser()
+                                                        .parse(
+                                                                "{ \"type\": \"record\", \"name\": \"CSVRecord\", "
+                                                                        + "\"fields\": ["
+                                                                        + "  {\"name\": \"unique_key\", \"type\": \"string\"},"
+                                                                        + "  {\"name\": \"name\", \"type\": \"string\"},"
+                                                                        + "  {\"name\": \"number\", \"type\": \"long\"},"
+                                                                        + "  {\"name\": \"ts\", \"type\": {\"type\": \"long\", \"logicalType\": \"timestamp-micros\"}}"
+                                                                        + "] }");
+                                    }
+
+                                    @Override
+                                    public GenericRecord map(String value) throws Exception {
+                                        String[] csvColumns = value.split(",");
+                                        GenericRecord record = new GenericData.Record(schema);
+                                        if (csvColumns.length == 4) {
+                                            record.put("unique_key", csvColumns[0]);
+                                            record.put("name", csvColumns[1]);
+                                            record.put(
+                                                    "number", Long.parseLong(csvColumns[2]) + 1L);
+                                            DateTimeFormatter formatter =
+                                                    DateTimeFormatter.ofPattern(
+                                                            "yyyy-MM-dd HH:mm:ss z");
+                                            Instant instant =
+                                                    Instant.from(formatter.parse(csvColumns[3]));
+                                            long timestampMicros = instant.toEpochMilli() * 1000;
+                                            record.put("ts", timestampMicros);
+                                        } else {
+                                            LOG.error("Invalid input: " + value);
+                                        }
+                                        return record;
+                                    }
+                                })
                         .returns(
                                 new GenericRecordAvroTypeInfo(
                                         sinkConfig.getSchemaProvider().getAvroSchema()))
@@ -731,27 +750,19 @@ public class BigQueryIntegrationTest {
      * obtained records via a flatmap. The flatmap appends a string "_write_test" to the "name"
      * field and writes the modified records back to another BigQuery table.
      *
-     * @param sourceGcpProjectName The GCP Project name of the source table.
-     * @param sourceDatasetName Dataset name of the source table.
-     * @param sourceTableName Source Table Name.
+     * @param sourceGCSBucketURI The GCS URI of the directory whose file will act as source
      * @param destGcpProjectName The GCP Project name of the destination table.
      * @param destDatasetName Dataset name of the destination table.
      * @param destTableName Destination Table Name.
      * @param isExactlyOnceEnabled Boolean value, True if exactly-once mode, false otherwise.
-     * @param recordPropertyForTimestamps Required String indicating the column name along which
-     *     BigQuery Table is partitioned.
-     * @throws Exception in a case of error, obtaining Table Descriptor.
      */
     private static void runStreamingSQLFlinkJob(
-            String sourceGcpProjectName,
-            String sourceDatasetName,
-            String sourceTableName,
+            String sourceGCSBucketURI,
             String destGcpProjectName,
             String destDatasetName,
             String destTableName,
             Boolean isExactlyOnceEnabled,
-            String recordPropertyForTimestamps,
-            Integer partitionDiscoveryInterval,
+            Integer fileDiscoveryInterval,
             Integer timeoutTimePeriod,
             Integer sinkParallelism)
             throws Exception {
@@ -760,22 +771,24 @@ public class BigQueryIntegrationTest {
         env.enableCheckpointing(CHECKPOINT_INTERVAL);
         final StreamTableEnvironment tEnv = StreamTableEnvironment.create(env);
         tEnv.createTemporarySystemFunction("func", MySQLFlatMapFunction.class);
-
-        // Declare Read Options.
-        BigQueryTableConfig readTableConfig =
-                BigQueryReadTableConfig.newBuilder()
-                        .table(sourceTableName)
-                        .project(sourceGcpProjectName)
-                        .dataset(sourceDatasetName)
-                        .testMode(false)
-                        .partitionDiscoveryInterval(partitionDiscoveryInterval)
-                        .boundedness(Boundedness.CONTINUOUS_UNBOUNDED)
-                        .build();
-
         // Register the Source Table
         tEnv.createTable(
                 "bigQuerySourceTable",
-                BigQueryTableSchemaProvider.getTableDescriptor(readTableConfig));
+                TableDescriptor.forConnector("filesystem")
+                        .schema(
+                                Schema.newBuilder()
+                                        .column("unique_key", DataTypes.STRING())
+                                        .column("name", DataTypes.STRING())
+                                        .column("number", DataTypes.BIGINT())
+                                        .column("ts", DataTypes.TIMESTAMP())
+                                        .build())
+                        .format("csv")
+                        .option("path", sourceGCSBucketURI)
+                        .option("csv.ignore-parse-errors", "true")
+                        .option(
+                                "source.monitor-interval",
+                                String.valueOf(fileDiscoveryInterval) + "s")
+                        .build());
 
         // Fetch entries in this sourceTable
         Table sourceTable =
@@ -839,7 +852,7 @@ public class BigQueryIntegrationTest {
             collect(
                     Row.of(
                             row.getField("unique_key"),
-                            str + "_write_test",
+                            str + "_write_test_new",
                             row.getField("number"),
                             row.getField("ts")));
         }
