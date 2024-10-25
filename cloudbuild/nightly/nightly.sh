@@ -76,7 +76,7 @@ run_read_write_test(){
   CLUSTER_FILE=$3
   PROJECT_NAME=$4
   DATASET_NAME=$5
-  GCS_SOURCE_URI=$6
+  SOURCE_TABLE_NAME=$6
   DESTINATION_TABLE_NAME=$7
   IS_EXACTLY_ONCE_ENABLED=$8
   MODE=$9
@@ -89,7 +89,7 @@ run_read_write_test(){
   export CLUSTER_NAME=$(cat "$CLUSTER_FILE")
 
   # Run the simple bounded write table test.
-  source cloudbuild/nightly/scripts/table_write.sh "$PROJECT_ID" "$CLUSTER_NAME" "$REGION" "$PROJECT_NAME" "$DATASET_NAME" "$GCS_SOURCE_URI" "$DESTINATION_TABLE_NAME" "$IS_EXACTLY_ONCE_ENABLED" "$MODE" "$PROPERTIES" "$SINK_PARALLELISM" "$IS_SQL"
+  source cloudbuild/nightly/scripts/table_write.sh "$PROJECT_ID" "$CLUSTER_NAME" "$REGION" "$PROJECT_NAME" "$DATASET_NAME" "$SOURCE_TABLE_NAME" "$DESTINATION_TABLE_NAME" "$IS_EXACTLY_ONCE_ENABLED" "$MODE" "$PROPERTIES" "$SINK_PARALLELISM" "$IS_SQL"
 }
 
 # Function to run the test to check BQ Table Read and Write.
