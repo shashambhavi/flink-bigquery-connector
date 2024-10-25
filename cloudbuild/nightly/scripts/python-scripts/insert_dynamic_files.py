@@ -71,6 +71,9 @@ def main(argv: Sequence[str]) -> None:
     bucket_name = gcs_source_uri.split("/")[2]
     source_blob_path = gcs_source_uri.split("/", 3)[-1]
     destination_folder = gcs_source_uri.split("/", 3)[-1]
+    print(bucket_name)
+    print(source_blob_path)
+    print(destination_folder)
 
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
