@@ -284,5 +284,5 @@ timeout: 3600s
 logsBucket: '${_LOGS_BUCKET}'
 
 options:
-  machineType: 'N2_HIGHCPU_32'
+  machineType: 'N1_HIGHCPU_32'
 
