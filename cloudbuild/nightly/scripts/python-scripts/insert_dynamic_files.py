@@ -71,9 +71,8 @@ def main(argv: Sequence[str]) -> None:
     bucket_name = gcs_source_uri.split("/")[2]
     source_blob_path = gcs_source_uri.split("/", 3)[-1]
     destination_folder = gcs_source_uri.split("/", 3)[-1]
-    print(bucket_name)
-    print(source_blob_path)
-    print(destination_folder)
+
+    sleep_for_seconds(2.5*60)
 
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
@@ -97,8 +96,6 @@ def main(argv: Sequence[str]) -> None:
 
             copies.append((current_time, new_rows))
             reader = csv.reader(data.splitlines())  # Reset the reader for the next copy
-
-    sleep_for_seconds(2.5*60)
 
     # Upload the modified copies
     copy_count = 1
