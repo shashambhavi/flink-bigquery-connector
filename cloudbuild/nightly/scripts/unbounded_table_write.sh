@@ -19,7 +19,7 @@ UNBOUNDED_JOB_SINK_PARALLELISM=$3
 IS_SQL=$4
 
 # Copy Source File to a temp directory
-gcloud storage cp "$GCS_SOURCE_URI"source.csv "$GCS_SOURCE_URI"/temp/"$timestamp"/"$IS_SQL"/source.csv
+gcloud storage cp "$GCS_SOURCE_URI"source.csv "$GCS_SOURCE_URI"temp/"$timestamp"/"$IS_SQL"/source.csv
 # Set the GCS bucket source to above copy for using in this test.
 GCS_SOURCE_URI="$GCS_SOURCE_URI"/temp/"$timestamp"/"$IS_SQL"/
 # Lifecycle policy already set, no need of this command
