@@ -62,6 +62,7 @@ def main(argv: Sequence[str]) -> None:
     )
 
     args = parser.parse_args(argv[1:])
+    sleep_for_seconds(2.5*60)
 
     # Providing the values.
     gcs_source_uri = args.gcs_source_uri
@@ -69,10 +70,13 @@ def main(argv: Sequence[str]) -> None:
     refresh_interval = int(args.refresh_interval)
 
     bucket_name = gcs_source_uri.split("/")[2]
-    source_blob_path = gcs_source_uri.split("/", 3)[-1]
-    destination_folder = gcs_source_uri.split("/", 3)[-1]
 
-    sleep_for_seconds(2.5*60)
+    # Split the URI into parts
+    parts = gcs_source_uri.split("/")
+
+    # Extract the relevant components
+    source_blob_path = "/".join(parts[3:])  # Join everything after the bucket name
+    destination_folder = "/".join(parts[3:-1]) + "/"  # Join everything except the file name, add trailing slash
 
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
