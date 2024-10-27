@@ -80,7 +80,7 @@ def main(argv: Sequence[str]) -> None:
 
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
-    source_blob = bucket.blob(source_blob_path)
+    source_blob = bucket.blob(source_blob_path + "/source.csv")
 
     # Download the CSV file to memory
     data = source_blob.download_as_string().decode('utf-8')
