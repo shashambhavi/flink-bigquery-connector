@@ -144,11 +144,11 @@ def main(argv: Sequence[str]) -> None:
     parser.add_argument(
             '--mode',
             dest='mode',
-            help='Set the flag to True If "EXACTLY ONCE" mode is enabled.',
-            action='store_true',
-            default=False,
-            required=False,
-        )
+            help='Table Name of the table which is destination for write test.',
+            type=str,
+            default='',
+            required=True,
+    )
 
     args = parser.parse_args(argv[1:])
 
