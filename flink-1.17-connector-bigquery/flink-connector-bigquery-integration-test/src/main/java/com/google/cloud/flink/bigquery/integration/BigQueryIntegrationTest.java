@@ -73,6 +73,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -780,14 +781,14 @@ public class BigQueryIntegrationTest {
                                         .column("unique_key", DataTypes.STRING())
                                         .column("name", DataTypes.STRING())
                                         .column("number", DataTypes.BIGINT())
-                                        .column("ts", DataTypes.TIMESTAMP())
+                                        .column("ts", DataTypes.STRING())
                                         .build())
                         .format("csv")
                         .option("path", sourceGCSBucketURI)
                         .option("csv.ignore-parse-errors", "true")
                         .option(
                                 "source.monitor-interval",
-                                String.valueOf(fileDiscoveryInterval) + "s")
+                                String.valueOf(fileDiscoveryInterval) + "m")
                         .build());
 
         // Fetch entries in this sourceTable
@@ -841,7 +842,7 @@ public class BigQueryIntegrationTest {
     @FunctionHint(
             input =
                     @DataTypeHint(
-                            "ROW<`unique_key` STRING, `name` STRING, `number` BIGINT, `ts` TIMESTAMP(6)>"),
+                            "ROW<`unique_key` STRING, `name` STRING, `number` BIGINT, `ts` STRING>"),
             output =
                     @DataTypeHint(
                             "ROW<`unique_key` STRING, `name` STRING, `number` BIGINT, `ts` TIMESTAMP(6)>"))
@@ -849,12 +850,15 @@ public class BigQueryIntegrationTest {
 
         public void eval(Row row) {
             String str = (String) row.getField("name");
+            String timestampString = (String) row.getField("ts");
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss 'UTC'");
+            LocalDateTime ts = LocalDateTime.parse(timestampString, formatter);
             collect(
                     Row.of(
                             row.getField("unique_key"),
-                            str + "_write_test_new",
+                            str + "_write_test",
                             row.getField("number"),
-                            row.getField("ts")));
+                            ts));
         }
     }
 
