@@ -77,7 +77,7 @@ def assert_unique_key_count(bq_client, storage_client, project_name, dataset_nam
     source_unique_key_count = 0
     if mode == "unbounded":
             source_unique_key_count = get_total_row_count_unbounded(storage_client, source)
-        else:
+    else:
             source_unique_key_count = get_unique_key_count(client, project_name, dataset_name,
                                                    source)
     logging.info(
