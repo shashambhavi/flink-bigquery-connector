@@ -20,7 +20,7 @@ CLUSTER_NAME=$2
 REGION=$3
 PROJECT_NAME=$4
 DATASET_NAME=$5
-SOURCE_TABLE_NAME=$6
+SOURCE=$6
 DESTINATION_TABLE_NAME=$7
 IS_EXACTLY_ONCE_ENABLED=$8
 MODE=$9
@@ -36,13 +36,13 @@ timestamp=$(date +"%Y%m%d%H%M%S")
 JOB_ID=$(echo "$RANDOM" | md5sum | cut -c 1-30)
 # Adds timestamp to job_id to prevent repetition.
 JOB_ID="$JOB_ID"_"$timestamp"
-echo [LOGS: "$PROJECT_NAME"."$DATASET_NAME"."$SOURCE_TABLE_NAME" Write Test] Created JOB ID: "$JOB_ID"
+echo [LOGS: "$PROJECT_NAME"."$DATASET_NAME"."$SOURCE" Write Test] Created JOB ID: "$JOB_ID"
 
 if [ "$MODE" == "bounded" ]
 then
   echo "Bounded Mode!"
   # Modify the destination table name.
-  DESTINATION_TABLE_NAME="$SOURCE_TABLE_NAME"-"$timestamp"
+  DESTINATION_TABLE_NAME="$SOURCE"-"$timestamp"
   if [ "$IS_SQL" == True ]
   then
     echo "SQL Mode is Enabled!"
@@ -63,10 +63,10 @@ fi
 if [ "$IS_EXACTLY_ONCE_ENABLED" == True ]
 then
   echo "Exactly Once!"
-  python3 cloudbuild/nightly/scripts/python-scripts/assert_table_count.py -- --project_name "$PROJECT_NAME" --dataset_name "$DATASET_NAME" --source_table_name "$SOURCE_TABLE_NAME" --destination_table_name "$DESTINATION_TABLE_NAME" --is_exactly_once
+  python3 cloudbuild/nightly/scripts/python-scripts/assert_table_count.py -- --project_name "$PROJECT_NAME" --dataset_name "$DATASET_NAME" --source "$SOURCE" --destination_table_name "$DESTINATION_TABLE_NAME" --mode "$MODE" --is_exactly_once
 else
   echo "At-least Once!"
-  python3 cloudbuild/nightly/scripts/python-scripts/assert_table_count.py -- --project_name "$PROJECT_NAME" --dataset_name "$DATASET_NAME" --source_table_name "$SOURCE_TABLE_NAME" --destination_table_name "$DESTINATION_TABLE_NAME"
+  python3 cloudbuild/nightly/scripts/python-scripts/assert_table_count.py -- --project_name "$PROJECT_NAME" --dataset_name "$DATASET_NAME" --source "$SOURCE" --destination_table_name "$DESTINATION_TABLE_NAME" --mode "$MODE"
 fi
 ret=$?
 if [ $ret -ne 0 ]
